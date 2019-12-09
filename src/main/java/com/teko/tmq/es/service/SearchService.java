@@ -5,7 +5,9 @@ import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.common.unit.Fuzziness;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.SearchHit;
@@ -18,7 +20,6 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -48,32 +49,33 @@ public class SearchService {
     }
 
     public List<Map> search(String indexName, Map<String, String> params) throws IOException {
-        Optional<Map.Entry<String, String>> opt = params.entrySet().stream().findFirst();
-        if (!opt.isPresent()) return new LinkedList<>();
+        if (params.isEmpty()) return new LinkedList<>();
 
-        String property = opt.get().getKey();
-        String value = opt.get().getValue();
+        BoolQueryBuilder query = QueryBuilders.boolQuery();
+        params.forEach((key, value) -> {
+            QueryBuilder matchQueryBuilder = QueryBuilders.matchQuery(key, value);
+//                    .fuzziness(Fuzziness.AUTO)
+//                    .prefixLength(2)
+//                    .maxExpansions(10);
+            query.filter(matchQueryBuilder);
+        });
 
-        List<Map> users = new ArrayList<>();
-        QueryBuilder matchQueryBuilder = QueryBuilders.matchQuery(property, value);
-//                .fuzziness(Fuzziness.AUTO)
-//                .prefixLength(2)
-//                .maxExpansions(10);
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
-        sourceBuilder.query(matchQueryBuilder);
         sourceBuilder.from(0);
         sourceBuilder.size(5);
         sourceBuilder.timeout(new TimeValue(60, TimeUnit.SECONDS));
+        sourceBuilder.query(query);
 
         SearchRequest searchRequest = new SearchRequest(indexName);
         searchRequest.source(sourceBuilder);
 
+        List<Map> result = new ArrayList<>();
         SearchResponse searchResponse = client.search(searchRequest, RequestOptions.DEFAULT);
         for (SearchHit searchHit : searchResponse.getHits().getHits()) {
             Map document = new ObjectMapper().readValue(searchHit.getSourceAsString(), Map.class);
-            users.add(document);
+            result.add(document);
         }
-        return users;
+        return result;
     }
 
 }
